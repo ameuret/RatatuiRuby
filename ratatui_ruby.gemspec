@@ -48,7 +48,7 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
   spec.extensions = ["ext/ratatui_ruby/extconf.rb"]
 
-  spec.add_dependency "rb_sys", "~> 0.9"
+  spec.add_dependency "rb_sys", "~> 0.9", ">= 0.9.129"
   spec.add_dependency "rexml", "~> 3.4"
   spec.add_development_dependency "rake-compiler", "~> 1.2"
   spec.add_development_dependency "rdoc", "~> 7.0"

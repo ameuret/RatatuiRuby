@@ -16,6 +16,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **macOS 27 load failure**: Native gems built for macOS contained a malformed Mach-O install name (empty `LC_ID_DYLIB`), which macOS 27's dynamic loader rejects. `require "ratatui_ruby"` failed with `load command #4 string extends beyond end of load command`. The extension is now built with `rb_sys` 0.9.129 or later, which sets a valid install name. The gemspec now requires `rb_sys >= 0.9.129`.
+
 ### Removed
 
 ## [1.5.0] - 2026-04-19
