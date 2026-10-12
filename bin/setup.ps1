@@ -64,7 +64,7 @@ disable_tools = ["ruby"]
 mise install
 mise x -- rustup target add x86_64-pc-windows-gnu
 mise x -- rustup component add rustfmt clippy
-mise x -- python -m pip install reuse
+mise x -- python -m pip install 'reuse[charset-normalizer]'
 
 # Build the [env] section: pip Scripts on PATH, plus BINDGEN/CARGO if needed.
 # pip installs scripts (like reuse.exe) to Python's Scripts directory,
