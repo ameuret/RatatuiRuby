@@ -18,6 +18,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 
 - **macOS 27 load failure**: Native gems built for macOS contained a malformed Mach-O install name (empty `LC_ID_DYLIB`), which macOS 27's dynamic loader rejects. `require "ratatui_ruby"` failed with `load command #4 string extends beyond end of load command`. The extension is now built with `rb_sys` 0.9.129 or later, which sets a valid install name. The gemspec now requires `rb_sys >= 0.9.129`.
+- **Precompiled gem skipped on most Macs**: The Apple Silicon native gem carried the macOS version of the CI machine that packaged it (`arm64-darwin-24` through 1.5.0, `arm64-darwin-23` in 1.5.1). RubyGems installs such a gem only when your Ruby reports that exact version, so other Macs fell back to the source gem and needed a Rust toolchain. The gem now ships as `arm64-darwin`, which installs on every macOS version on Apple Silicon.
 
 ### Removed
 

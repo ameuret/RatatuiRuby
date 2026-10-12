@@ -27,7 +27,7 @@ class PlatformGem
   def build
     abort "No versioned binaries found in #{LIB_DIR}/*/" if @binaries.empty?
 
-    @spec.platform = Gem::Platform.local
+    @spec.platform = platform
     @spec.extensions.clear
     @spec.files += @binaries.map(&:path)
 
@@ -51,6 +51,20 @@ class PlatformGem
     gem_file = Gem::Package.build(@spec)
     FileUtils.mv(gem_file, "pkg")
     puts "Built pkg/#{File.basename(gem_file)}"
+  end
+
+  # The platform of the packaging Ruby, without a darwin version.
+  #
+  # RubyGems installs an <tt>arm64-darwin-23</tt> gem only on a Ruby that
+  # reports exactly darwin 23. That number names the CI image's macOS, not
+  # anything the binary needs. The binary targets macOS 11, the first
+  # release on Apple Silicon, so <tt>arm64-darwin</tt> fits every Mac
+  # that can run it.
+  private def platform
+    local = Gem::Platform.local
+    return local unless local.os == "darwin"
+
+    Gem::Platform.new([local.cpu, local.os, nil])
   end
 end
 
