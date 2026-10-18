@@ -21,3 +21,11 @@ time = { version = "0.3", features = ["macros"] }
 [profile.release]
 debug = true
 strip = false
+
+[features]
+# Enables Rust tests that host a Ruby VM inside the cargo test binary, so
+# they can assert against real Ruby objects. Requires a Ruby with a shared
+# libruby to link; the cargo:test rake task enables it only when one is
+# active, because static libruby builds (mise prebuilt, which embed YJIT's
+# Rust runtime) cannot be linked into a Rust binary.
+embed-ruby-tests = ["magnus/embed"]
