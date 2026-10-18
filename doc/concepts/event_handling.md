@@ -84,6 +84,7 @@ Specific to certain event classes to simplify checks.
 #### `RatatuiRuby::Event::Key`
 *   `ctrl?`, `alt?`, `shift?`: Check if modifier is held.
 *   `text?`: Returns `true` if the event is a printable character (length == 1).
+*   `press?`, `repeat?`, `release?`: Check the key event kind. See [Key Event Kinds](#key-event-kinds-press-repeat-release) below.
 
 <!-- SPDX-SnippetBegin -->
 <!--
@@ -149,11 +150,57 @@ end
 ```
 <!-- SPDX-SnippetEnd -->
 
+## Key Event Kinds (Press, Repeat, Release)
+
+Every `RatatuiRuby::Event::Key` carries an `event_kind`: `:press`, `:repeat` (the operating system re-sending a held key), or `:release` (the key lifting back up). The `press?`, `repeat?`, and `release?` predicates answer directly, and pattern matching sees the kind via `deconstruct_keys`.
+
+Two conditions gate whether repeat and release events ever arrive:
+
+1.  The terminal must speak the [Kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) (kitty, WezTerm, ghostty do; Terminal.app, iTerm2, and GNOME Terminal do not).
+2.  The application must push the `:report_event_types` flag with `RatatuiRuby::Terminal.push_keyboard_enhancement_flags`, and pop it on the way out.
+
+<!-- SPDX-SnippetBegin -->
+<!--
+  SPDX-FileCopyrightText: 2026 Kerrick Long
+  SPDX-License-Identifier: MIT-0
+-->
+```ruby
+RatatuiRuby.run do
+  if RatatuiRuby::Terminal.supports_keyboard_enhancement?
+    RatatuiRuby::Terminal.push_keyboard_enhancement_flags(
+      :disambiguate, :report_event_types
+    )
+  end
+  begin
+    loop do
+      event = RatatuiRuby.poll_event
+
+      case event
+      in { type: :key, code: "q", event_kind: :press }
+        break
+      in { type: :key, code: "right", event_kind: :repeat }
+        fast_scroll
+      in { type: :key, event_kind: :release }
+        confirm_action(event.code)
+      in { type: :key, event_kind: :press }
+        handle_first_press(event.code)
+      end
+    end
+  ensure
+    RatatuiRuby::Terminal.pop_keyboard_enhancement_flags
+  end
+end
+```
+<!-- SPDX-SnippetEnd -->
+
+> [!NOTE]
+> On Windows, crossterm reports both a press and a release event for each keystroke, whether or not the protocol is available. Applications that act on every key event should filter on `event_kind` (or `press?`) so each keystroke acts once.
+
 ## Summary of Event Classes
 
 | Event Class | Discriminator (`type:`) | Attributes | Predicate |
 | :--- | :--- | :--- | :--- |
-| `RatatuiRuby::Event::Key` | `:key` | `code`, `modifiers` | `key?` |
+| `RatatuiRuby::Event::Key` | `:key` | `code`, `modifiers`, `kind`, `event_kind` | `key?` |
 | `RatatuiRuby::Event::Mouse` | `:mouse` | `kind`, `x`, `y`, `button`, `modifiers` | `mouse?` |
 | `RatatuiRuby::Event::Resize` | `:resize` | `width`, `height` | `resize?` |
 | `RatatuiRuby::Event::Paste` | `:paste` | `content` | `paste?` |

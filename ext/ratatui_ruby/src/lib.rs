@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Kerrick Long <me@kerricklong.com>
+// SPDX-FileCopyrightText: 2026 Kerrick Long <me@kerricklong.com>
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 // Require SAFETY comments on all unsafe blocks
@@ -193,6 +193,14 @@ fn register_terminal_class(ruby: &Ruby, m: magnus::RModule) -> Result<(), Error>
     terminal_class.define_singleton_method(
         "_force_color_output",
         function!(terminal::force_color_output, 1),
+    )?;
+    terminal_class.define_singleton_method(
+        "_push_keyboard_enhancement_flags",
+        function!(terminal::push_keyboard_enhancement_flags, 1),
+    )?;
+    terminal_class.define_singleton_method(
+        "_pop_keyboard_enhancement_flags",
+        function!(terminal::pop_keyboard_enhancement_flags, 0),
     )?;
     Ok(())
 }

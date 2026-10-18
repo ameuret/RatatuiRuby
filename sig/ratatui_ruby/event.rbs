@@ -23,6 +23,8 @@ module RatatuiRuby
 
     type key_kind = :standard | :function | :media | :modifier | :system
 
+    type event_kind = :press | :repeat | :release
+
     class Sync < Event
       def sync?: () -> bool
       def deconstruct_keys: (Array[Symbol]?) -> { type: :sync }
@@ -111,8 +113,9 @@ module RatatuiRuby
       attr_reader code: String
       attr_reader modifiers: Array[String]
       attr_reader kind: key_kind
+      attr_reader event_kind: event_kind
 
-      def initialize: (code: String, ?modifiers: Array[String], ?kind: key_kind) -> void
+      def initialize: (code: String, ?modifiers: Array[String], ?kind: key_kind, ?event_kind: event_kind) -> void
       def ==: (untyped other) -> bool
       def to_sym: () -> Symbol
       def to_s: () -> String
@@ -130,7 +133,10 @@ module RatatuiRuby
       def unmodified?: () -> bool
       def method_missing: (Symbol, *untyped, **untyped) ?{ (?) -> untyped } -> untyped
       def respond_to_missing?: (Symbol, *untyped) -> bool
-      def deconstruct_keys: (Array[Symbol]?) -> { type: :key, code: String, modifiers: Array[String], kind: key_kind }
+      def press?: () -> bool
+      def repeat?: () -> bool
+      def release?: () -> bool
+      def deconstruct_keys: (Array[Symbol]?) -> { type: :key, code: String, modifiers: Array[String], kind: key_kind, event_kind: event_kind }
     end
 
     class Mouse < Event

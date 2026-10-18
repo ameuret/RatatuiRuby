@@ -72,7 +72,11 @@ module RatatuiRuby
 
         case event
         when RatatuiRuby::Event::Key
-          RatatuiRuby.inject_test_event("key", { code: event.code, modifiers: event.modifiers })
+          RatatuiRuby.inject_test_event("key", {
+            code: event.code,
+            modifiers: event.modifiers,
+            event_kind: event.event_kind.to_s,
+          })
         when RatatuiRuby::Event::Mouse
           RatatuiRuby.inject_test_event("mouse", {
             kind: event.kind,
@@ -171,7 +175,7 @@ module RatatuiRuby
       # Accepts multiple formats for convenience:
       # - String: Character key (e.g., <tt>"a"</tt>, <tt>"q"</tt>)
       # - Symbol: Named key or modifier combo (e.g., <tt>:enter</tt>, <tt>:ctrl_c</tt>)
-      # - Hash: Passed to <tt>Key.new</tt>
+      # - Hash: Passed to <tt>Key.new</tt>, including <tt>event_kind</tt>
       # - Key: Passed directly
       #
       # === Examples
@@ -185,6 +189,7 @@ module RatatuiRuby
       #   inject_keys(:enter, :esc)
       #   inject_keys(:ctrl_c, :alt_shift_left)
       #   inject_keys("j", { code: "k", modifiers: ["ctrl"] })
+      #   inject_keys({ code: "right", event_kind: :repeat })
       #--
       # SPDX-SnippetEnd
       #++

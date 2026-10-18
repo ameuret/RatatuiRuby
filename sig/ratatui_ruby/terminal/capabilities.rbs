@@ -18,6 +18,8 @@ module RatatuiRuby
       def available_color_count: () -> Integer
       def color_support: () -> (:none | :basic | :ansi256 | :truecolor)
       def supports_keyboard_enhancement?: () -> bool
+      def push_keyboard_enhancement_flags: (*(:disambiguate | :report_event_types | :report_alternate_keys | :report_all_keys_as_escape_codes | :report_associated_text) flags) -> void
+      def pop_keyboard_enhancement_flags: () -> void
       def force_color_output: (bool enable) -> void
 
       private
@@ -25,6 +27,8 @@ module RatatuiRuby
       # FFI methods (defined in Rust, exposed on Terminal singleton)
       def _available_color_count: () -> Integer
       def _supports_keyboard_enhancement: () -> bool
+      def _push_keyboard_enhancement_flags: (Array[String] flags) -> void
+      def _pop_keyboard_enhancement_flags: () -> void
       def _force_color_output: (bool enable) -> void
     end
 

@@ -165,6 +165,32 @@ fn parse_keyboard_modifier(s: &str) -> Option<KeyModifiers> {
         .map(|(_, mods)| *mods)
 }
 
+/// Maps a crossterm `KeyEventKind` to its Ruby symbol name.
+///
+/// Single source of truth for the `event_kind` value reported by
+/// `Event::Key`: `press`, `repeat`, or `release`.
+fn key_event_kind_to_string(kind: ratatui::crossterm::event::KeyEventKind) -> &'static str {
+    match kind {
+        ratatui::crossterm::event::KeyEventKind::Press => "press",
+        ratatui::crossterm::event::KeyEventKind::Repeat => "repeat",
+        ratatui::crossterm::event::KeyEventKind::Release => "release",
+    }
+}
+
+/// Parses a Ruby `event_kind` string into a crossterm `KeyEventKind`.
+///
+/// Inverse of `key_event_kind_to_string`. Returns `None` for unknown
+/// strings so callers can raise `ArgumentError` like the rest of the
+/// event parser.
+fn parse_key_event_kind(s: &str) -> Option<ratatui::crossterm::event::KeyEventKind> {
+    match s {
+        "press" => Some(ratatui::crossterm::event::KeyEventKind::Press),
+        "repeat" => Some(ratatui::crossterm::event::KeyEventKind::Repeat),
+        "release" => Some(ratatui::crossterm::event::KeyEventKind::Release),
+        _ => None,
+    }
+}
+
 fn parse_key_event(
     data: magnus::RHash,
     ruby: &magnus::Ruby,
@@ -202,8 +228,21 @@ fn parse_key_event(
         }
     }
 
+    let kind = match data.get(ruby.to_symbol("event_kind")) {
+        Some(kind_val) => {
+            let kind_str: String = String::try_convert(kind_val)?;
+            parse_key_event_kind(&kind_str).ok_or_else(|| {
+                Error::new(
+                    ruby.exception_arg_error(),
+                    format!("Unknown event_kind: {kind_str}"),
+                )
+            })?
+        }
+        None => ratatui::crossterm::event::KeyEventKind::Press,
+    };
+
     Ok(ratatui::crossterm::event::Event::Key(
-        ratatui::crossterm::event::KeyEvent::new(code, modifiers),
+        ratatui::crossterm::event::KeyEvent::new_with_kind(code, modifiers, kind),
     ))
 }
 
@@ -482,10 +521,6 @@ fn handle_key_event(key: ratatui::crossterm::event::KeyEvent) -> Result<Value, E
     use ratatui::crossterm::event::KeyCode;
 
     let ruby = magnus::Ruby::get().unwrap();
-    if key.kind != ratatui::crossterm::event::KeyEventKind::Press {
-        return Ok(ruby.qnil().into_value_with(&ruby));
-    }
-
     let hash = ruby.hash_new();
     hash.aset(ruby.to_symbol("type"), ruby.to_symbol("key"))?;
 
@@ -536,6 +571,10 @@ fn handle_key_event(key: ratatui::crossterm::event::KeyEvent) -> Result<Value, E
 
     hash.aset(ruby.to_symbol("code"), code)?;
     hash.aset(ruby.to_symbol("kind"), ruby.to_symbol(kind))?;
+    hash.aset(
+        ruby.to_symbol("event_kind"),
+        ruby.to_symbol(key_event_kind_to_string(key.kind)),
+    )?;
 
     let mut modifiers = Vec::new();
     for (name, flag) in KEYBOARD_MODIFIER_MAPPINGS {
@@ -641,7 +680,187 @@ fn handle_focus_event(event_type: &str) -> Result<Value, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::crossterm::event::KeyEventKind;
 
+    /// Tests that host a Ruby VM inside the test binary.
+    ///
+    /// Linking a Ruby VM into a Rust executable requires a shared libruby.
+    /// Static libruby builds (such as mise's prebuilt rubies) embed YJIT's
+    /// Rust runtime, whose panic machinery collides with the test binary's
+    /// own, so these tests compile only behind the `embed-ruby-tests`
+    /// feature. The `cargo:test` rake task enables it when the active Ruby
+    /// provides a shared libruby; the Ruby test suite exercises the same
+    /// code paths through the compiled extension everywhere else.
+    #[cfg(all(test, feature = "embed-ruby-tests"))]
+    mod embedded_ruby_tests {
+        use super::*;
+
+        /// Initializes an embedded Ruby VM once for the whole test binary.
+        ///
+        /// Tests run with `--test-threads=1` (see the `cargo:test` rake task),
+        /// so every test runs on the main thread and shares this one VM. The
+        /// cleanup guard is intentionally leaked: the Ruby VM must outlive
+        /// every test, and the test binary exits right after.
+        fn embedded_ruby() -> magnus::Ruby {
+            static INIT: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+            INIT.get_or_init(|| {
+                // SAFETY: embed::init sets up the Ruby VM on the current thread,
+                // which is safe here because tests run serially on one thread
+                // (see the `cargo:test` rake task) and no other Ruby state
+                // exists in the process. The returned cleanup guard would tear
+                // the VM down when dropped, so it is leaked below to keep the
+                // VM alive for every remaining test.
+                let cleanup = unsafe { magnus::embed::init() };
+                std::mem::forget(cleanup);
+            });
+            // SAFETY: the Ruby VM was initialized above on this same thread,
+            // so a handle exists and this thread is a Ruby thread.
+            unsafe { magnus::Ruby::get_unchecked() }
+        }
+
+        /// Builds a right-arrow `KeyEvent` with the given kind and modifiers.
+        fn right_key_event(
+            kind: KeyEventKind,
+            modifiers: ratatui::crossterm::event::KeyModifiers,
+        ) -> ratatui::crossterm::event::KeyEvent {
+            ratatui::crossterm::event::KeyEvent::new_with_kind(KeyCode::Right, modifiers, kind)
+        }
+
+        /// Reads a Symbol hash value as its name.
+        fn hash_symbol(hash: magnus::RHash, ruby: &magnus::Ruby, key: &str) -> String {
+            let value = hash.get(ruby.to_symbol(key)).expect("hash key present");
+            let symbol = magnus::Symbol::try_convert(value).expect("value is a Symbol");
+            symbol.name().expect("symbol name").into_owned()
+        }
+
+        /// Reads a String hash value.
+        fn hash_string(hash: magnus::RHash, ruby: &magnus::Ruby, key: &str) -> String {
+            let value = hash.get(ruby.to_symbol(key)).expect("hash key present");
+            String::try_convert(value).expect("value is a String")
+        }
+
+        /// Reads a String-array hash value.
+        fn hash_strings(hash: magnus::RHash, ruby: &magnus::Ruby, key: &str) -> Vec<String> {
+            let value = hash.get(ruby.to_symbol(key)).expect("hash key present");
+            Vec::try_convert(value).expect("value is an Array of Strings")
+        }
+
+        /// Builds an injected-key hash shaped like `inject_test_event` payloads.
+        fn injected_key_hash(ruby: &magnus::Ruby, event_kind: Option<&str>) -> magnus::RHash {
+            let hash = ruby.hash_new();
+            hash.aset(ruby.to_symbol("code"), "right").unwrap();
+            if let Some(kind) = event_kind {
+                hash.aset(ruby.to_symbol("event_kind"), kind).unwrap();
+            }
+            hash
+        }
+
+        fn assert_handle_key_event_hashes(
+            ruby: &magnus::Ruby,
+            event_kind: KeyEventKind,
+            modifiers: ratatui::crossterm::event::KeyModifiers,
+            expected_event_kind: &str,
+            expected_modifiers: &[&str],
+        ) {
+            let value = handle_key_event(right_key_event(event_kind, modifiers)).unwrap();
+            let hash = magnus::RHash::try_convert(value).expect("key event maps to a Hash");
+
+            assert_eq!(hash_symbol(hash, ruby, "type"), "key");
+            assert_eq!(hash_string(hash, ruby, "code"), "right");
+            assert_eq!(hash_symbol(hash, ruby, "kind"), "standard");
+            assert_eq!(hash_symbol(hash, ruby, "event_kind"), expected_event_kind);
+            if expected_modifiers.is_empty() {
+                assert!(
+                    hash.get(ruby.to_symbol("modifiers")).is_none(),
+                    "no modifiers were pressed, so the hash omits the key"
+                );
+            } else {
+                assert_eq!(hash_strings(hash, ruby, "modifiers"), expected_modifiers);
+            }
+        }
+
+        fn handle_key_event_reports_press(ruby: &magnus::Ruby) {
+            assert_handle_key_event_hashes(
+                ruby,
+                KeyEventKind::Press,
+                KeyModifiers::empty(),
+                "press",
+                &[],
+            );
+        }
+
+        fn handle_key_event_reports_repeat(ruby: &magnus::Ruby) {
+            assert_handle_key_event_hashes(
+                ruby,
+                KeyEventKind::Repeat,
+                KeyModifiers::empty(),
+                "repeat",
+                &[],
+            );
+        }
+
+        fn handle_key_event_reports_release(ruby: &magnus::Ruby) {
+            assert_handle_key_event_hashes(
+                ruby,
+                KeyEventKind::Release,
+                KeyModifiers::CONTROL,
+                "release",
+                &["ctrl"],
+            );
+        }
+
+        fn parse_key_event_round_trips_every_event_kind(ruby: &magnus::Ruby) {
+            for (name, expected) in [
+                ("press", KeyEventKind::Press),
+                ("repeat", KeyEventKind::Repeat),
+                ("release", KeyEventKind::Release),
+            ] {
+                let event = parse_key_event(injected_key_hash(ruby, Some(name)), ruby)
+                    .expect("valid injected event kind parses");
+                match event {
+                    ratatui::crossterm::event::Event::Key(key) => {
+                        assert_eq!(key.kind, expected, "wrong kind for {name}");
+                        assert_eq!(key.code, KeyCode::Right, "wrong code for {name}");
+                    }
+                    _ => panic!("expected a key event for {name}"),
+                }
+            }
+        }
+
+        fn parse_key_event_defaults_to_press(ruby: &magnus::Ruby) {
+            let event = parse_key_event(injected_key_hash(ruby, None), ruby)
+                .expect("absent event_kind parses as a press");
+            match event {
+                ratatui::crossterm::event::Event::Key(key) => {
+                    assert_eq!(key.kind, KeyEventKind::Press);
+                }
+                _ => panic!("expected a key event"),
+            }
+        }
+
+        fn parse_key_event_rejects_unknown_event_kind(ruby: &magnus::Ruby) {
+            let result = parse_key_event(injected_key_hash(ruby, Some("held")), ruby);
+            let error = result.expect_err("unknown event_kind must raise");
+            assert!(error.is_kind_of(ruby.exception_arg_error()));
+        }
+
+        /// Runs every assertion that needs the embedded Ruby VM.
+        ///
+        /// The Ruby VM is a process-wide singleton bound to the thread that
+        /// initialized it (see `embedded_ruby`), so all Ruby-backed checks live
+        /// in this one test. Each phase is a focused helper so failures still
+        /// point at the exact assertion.
+        #[test]
+        fn event_kind_flows_between_ruby_and_crossterm() {
+            let ruby = embedded_ruby();
+            handle_key_event_reports_press(&ruby);
+            handle_key_event_reports_repeat(&ruby);
+            handle_key_event_reports_release(&ruby);
+            parse_key_event_round_trips_every_event_kind(&ruby);
+            parse_key_event_defaults_to_press(&ruby);
+            parse_key_event_rejects_unknown_event_kind(&ruby);
+        }
+    }
     #[test]
     fn poll_data_defaults_to_no_event() {
         let data = PollData {
@@ -702,5 +921,20 @@ mod tests {
             }
             _ => {} // NoEvent, Event, or a *different* Error are all fine.
         }
+    }
+
+    #[test]
+    fn key_event_kind_to_string_maps_all_kinds() {
+        assert_eq!(key_event_kind_to_string(KeyEventKind::Press), "press");
+        assert_eq!(key_event_kind_to_string(KeyEventKind::Repeat), "repeat");
+        assert_eq!(key_event_kind_to_string(KeyEventKind::Release), "release");
+    }
+
+    #[test]
+    fn parse_key_event_kind_inverts_the_mapping() {
+        assert_eq!(parse_key_event_kind("press"), Some(KeyEventKind::Press));
+        assert_eq!(parse_key_event_kind("repeat"), Some(KeyEventKind::Repeat));
+        assert_eq!(parse_key_event_kind("release"), Some(KeyEventKind::Release));
+        assert_eq!(parse_key_event_kind("held"), None);
     }
 }

@@ -15,7 +15,7 @@ module RatatuiRuby
       def inject_click: (x: Integer, y: Integer, ?modifiers: Array[String]) -> void
       def inject_right_click: (x: Integer, y: Integer, ?modifiers: Array[String]) -> void
       def inject_drag: (x: Integer, y: Integer, ?modifiers: Array[String], ?button: Symbol) -> void
-      def inject_keys: (*(String | Symbol | { code: String, ?modifiers: Array[String] } | Event::Key) args) -> void
+      def inject_keys: (*(String | Symbol | { code: String, ?modifiers: Array[String], ?event_kind: Event::event_kind } | Event::Key) args) -> void
       alias inject_key inject_keys
     end
   end

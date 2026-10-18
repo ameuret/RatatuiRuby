@@ -87,6 +87,21 @@ module RatatuiRuby
     # * Individual modifiers: <tt>:left_shift</tt>, <tt>:right_control</tt>, <tt>:left_super</tt>
     #
     # These keys will not work in Terminal.app, iTerm2, or GNOME Terminal.
+    #
+    # === Key Event Kinds (Press, Repeat, Release)
+    #
+    # Every Key event carries an +event_kind+: <tt>:press</tt>,
+    # <tt>:repeat</tt> (the operating system re-sending a held key), or
+    # <tt>:release</tt> (the key lifting back up). The <tt>press?</tt>,
+    # <tt>repeat?</tt>, and <tt>release?</tt> predicates answer directly.
+    #
+    # Two conditions gate whether repeat and release events ever arrive:
+    # the terminal must speak the Kitty keyboard protocol, and the
+    # application must push the <tt>:report_event_types</tt> flag via
+    # {RatatuiRuby::Terminal.push_keyboard_enhancement_flags}. Without
+    # both, every event is a press. On Windows, crossterm reports a
+    # release for every keystroke regardless, so filter on
+    # <tt>event_kind</tt> before acting on a key.
     class Key < Event
       include Character
       include Dwim
@@ -114,6 +129,35 @@ module RatatuiRuby
       #   event.kind # => :media
       attr_reader :kind
 
+      # The kind of keyboard event.
+      #
+      # One of: <tt>:press</tt>, <tt>:repeat</tt>, <tt>:release</tt>.
+      #
+      # Terminals that report event types distinguish a fresh press from the
+      # operating system's auto-repeat stream, and from the key lifting back
+      # up. Use it to drive hold-to-scroll behavior or act-on-release
+      # interactions.
+      #
+      #--
+      # SPDX-SnippetBegin
+      # SPDX-FileCopyrightText: 2026 Kerrick Long
+      # SPDX-License-Identifier: MIT-0
+      #++
+      #   puts event.event_kind # => :release
+      #
+      #--
+      # SPDX-SnippetEnd
+      #++
+      # Terminals only send <tt>:repeat</tt> and <tt>:release</tt> when both
+      # of these hold: the terminal understands the Kitty keyboard protocol,
+      # and the application pushed the
+      # <tt>:report_event_types</tt> enhancement flag with
+      # {RatatuiRuby::Terminal.push_keyboard_enhancement_flags}. On terminals
+      # without the protocol, every event arrives as <tt>:press</tt>. On
+      # Windows, crossterm reports both a press and a release for each
+      # keystroke, so filter on this value before acting.
+      attr_reader :event_kind
+
       # Returns true for Key events.
       #
       #--
@@ -131,6 +175,95 @@ module RatatuiRuby
         true
       end
 
+      # Checks whether this event is a fresh key press.
+      #
+      # Users press keys once and expect one action. Auto-repeat is a
+      # separate stream of events, and key release another. Responding to
+      # every event as if it were a fresh press makes held keys fire dozens
+      # of times.
+      #
+      # This predicate is +true+ only when +event_kind+ is <tt>:press</tt>.
+      # On terminals without the Kitty keyboard protocol (or without the
+      # enhancement flags pushed) every event is a press, so this returns
+      # +true+ for all of them. On Windows, both a press and a release
+      # arrive for each keystroke; filter on this predicate to act once.
+      #
+      # === Example
+      #
+      #--
+      # SPDX-SnippetBegin
+      # SPDX-FileCopyrightText: 2026 Kerrick Long
+      # SPDX-License-Identifier: MIT-0
+      #++
+      #   case event
+      #   in type: :key, code: "right" unless event.press?
+      #     next # ignore auto-repeat and release
+      #   in type: :key, code: "right"
+      #     move_cursor_right
+      #   end
+      #--
+      # SPDX-SnippetEnd
+      #++
+      def press?
+        @event_kind == :press
+      end
+
+      # Checks whether this event comes from the operating system's
+      # auto-repeat.
+      #
+      # Holding a key down makes the terminal re-send the key on a timer.
+      # Terminals that report event types label those re-sends as repeats,
+      # so applications can implement their own repeat cadence or count
+      # how long a key has been held.
+      #
+      # This predicate is +true+ only when +event_kind+ is <tt>:repeat</tt>.
+      # It requires a Kitty-protocol-capable terminal with the
+      # <tt>:report_event_types</tt> enhancement flag pushed; otherwise no
+      # repeat events ever arrive.
+      #
+      # === Example
+      #
+      #--
+      # SPDX-SnippetBegin
+      # SPDX-FileCopyrightText: 2026 Kerrick Long
+      # SPDX-License-Identifier: MIT-0
+      #++
+      #   fast_scroll if event.repeat?
+      #--
+      # SPDX-SnippetEnd
+      #++
+      def repeat?
+        @event_kind == :repeat
+      end
+
+      # Checks whether this event is the key lifting back up.
+      #
+      # Acting on release instead of press opens interactions a press-only
+      # terminal cannot offer: confirm-on-release, hold-to-preview, and
+      # measuring how long a key was held.
+      #
+      # This predicate is +true+ only when +event_kind+ is <tt>:release</tt>.
+      # It requires a Kitty-protocol-capable terminal with the
+      # <tt>:report_event_types</tt> enhancement flag pushed. On Windows,
+      # every keystroke reports a release even without the protocol; filter
+      # with this predicate rather than assuming.
+      #
+      # === Example
+      #
+      #--
+      # SPDX-SnippetBegin
+      # SPDX-FileCopyrightText: 2026 Kerrick Long
+      # SPDX-License-Identifier: MIT-0
+      #++
+      #   arm_action(event.code) if event.press?
+      #   fire_action(event.code) if event.release?
+      #--
+      # SPDX-SnippetEnd
+      #++
+      def release?
+        @event_kind == :release
+      end
+
       # Creates a new Key event.
       #
       # [code]
@@ -145,13 +278,25 @@ module RatatuiRuby
       #++
       #   The key category (Symbol). One of: <tt>:standard</tt>, <tt>:function</tt>,
       #   <tt>:media</tt>, <tt>:modifier</tt>, <tt>:system</tt>. Defaults to <tt>:standard</tt>.
+      # [event_kind]
+      #--
+      # SPDX-SnippetBegin
+      # SPDX-FileCopyrightText: 2026 Kerrick Long
+      # SPDX-License-Identifier: MIT-0
+      #++
+      #   The keyboard event kind (Symbol). One of: <tt>:press</tt>,
+      #   <tt>:repeat</tt>, <tt>:release</tt>. Defaults to <tt>:press</tt>.
       #--
       # SPDX-SnippetEnd
       #++
-      def initialize(code:, modifiers: [], kind: :standard)
+      #--
+      # SPDX-SnippetEnd
+      #++
+      def initialize(code:, modifiers: [], kind: :standard, event_kind: :press)
         @code = code.freeze
         @modifiers = modifiers.map(&:freeze).sort.freeze
         @kind = kind
+        @event_kind = event_kind.freeze
       end
 
       # Compares the event with another object.
@@ -467,12 +612,14 @@ module RatatuiRuby
       #     puts "Ctrl+C pressed"
       #   in type: :key, kind: :media
       #     puts "Media key pressed"
+      #   in type: :key, event_kind: :release
+      #     puts "Key released"
       #   end
       #--
       # SPDX-SnippetEnd
       #++
       def deconstruct_keys(keys)
-        { type: :key, code: @code, modifiers: @modifiers, kind: @kind }
+        { type: :key, code: @code, modifiers: @modifiers, kind: @kind, event_kind: @event_kind }
       end
     end
   end

@@ -32,6 +32,43 @@ class TestPollEvent < Minitest::Test
     assert_equal ["ctrl"], result.modifiers
   end
 
+  def test_poll_key_event_without_event_kind_defaults_to_press
+    RatatuiRuby.inject_test_event("key", { code: "a" })
+    result = RatatuiRuby.poll_event
+
+    assert_predicate result, :key?
+    assert_equal :press, result.event_kind
+    assert_predicate result, :press?
+    refute_predicate result, :repeat?
+    refute_predicate result, :release?
+  end
+
+  def test_poll_key_event_reports_each_event_kind
+    {
+      "press" => [:press, :press?, %i[repeat? release?]],
+      "repeat" => [:repeat, :repeat?, %i[press? release?]],
+      "release" => [:release, :release?, %i[press? repeat?]],
+    }.each do |injected, (expected_kind, true_predicate, false_predicates)|
+      RatatuiRuby.inject_test_event("key", { code: "right", event_kind: injected })
+      result = RatatuiRuby.poll_event
+
+      assert_predicate result, :key?
+      assert_equal expected_kind, result.event_kind, "wrong event_kind for #{injected}"
+      assert_predicate result, true_predicate, "#{true_predicate} should hold for #{injected}"
+      false_predicates.each do |predicate|
+        refute_predicate result, predicate, "#{predicate} should not hold for #{injected}"
+      end
+    end
+  end
+
+  def test_poll_key_event_rejects_unknown_event_kind
+    error = assert_raises ArgumentError do
+      RatatuiRuby.inject_test_event("key", { code: "a", event_kind: "held" })
+    end
+
+    assert_includes error.message, "held"
+  end
+
   def test_poll_mouse_event
     RatatuiRuby.inject_test_event("mouse", { kind: "down", button: "left", x: 10, y: 20, modifiers: ["shift"] })
     result = RatatuiRuby.poll_event

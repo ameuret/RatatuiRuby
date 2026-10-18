@@ -282,6 +282,102 @@ module RatatuiRuby
         false
       end
 
+      # Pushes Kitty keyboard protocol enhancement flags to the terminal.
+      #
+      # Terminals hide information by default. The Kitty keyboard protocol
+      # defines flags that make the terminal report more: unambiguous escape
+      # keys, key repeat and release events, alternate key codes. The
+      # terminal only sends what was pushed.
+      #
+      # Pass one or more flag symbols:
+      #
+      # :disambiguate::
+      #   Report Escape and modified keys unambiguously.
+      # :report_event_types::
+      #--
+      # SPDX-SnippetBegin
+      # SPDX-FileCopyrightText: 2026 Kerrick Long
+      # SPDX-License-Identifier: MIT-0
+      #++
+      #   Report key repeat and release events. This is the flag that feeds
+      #   <tt>Event::Key#event_kind</tt> with <tt>:repeat</tt> and
+      #   <tt>:release</tt>.
+      #--
+      # SPDX-SnippetEnd
+      #++
+      # :report_alternate_keys::
+      #   Report alternate key codes alongside the base code.
+      # :report_all_keys_as_escape_codes::
+      #--
+      # SPDX-SnippetBegin
+      # SPDX-FileCopyrightText: 2026 Kerrick Long
+      # SPDX-License-Identifier: MIT-0
+      #++
+      #   Report every key as an escape sequence, including plain text
+      #   keys. Repeat and release for plain text keys need this.
+      #
+      #--
+      # SPDX-SnippetEnd
+      #++
+      # Pushing is opt-in; nothing in <tt>run</tt> pushes flags for you.
+      # Pair every push with a pop, typically in an ensure block, so the
+      # terminal state is restored even when the application crashes:
+      #
+      # === Example
+      #
+      #--
+      # SPDX-SnippetBegin
+      # SPDX-FileCopyrightText: 2026 Kerrick Long
+      # SPDX-License-Identifier: MIT-0
+      #++
+      #   RatatuiRuby.run do
+      #     if RatatuiRuby::Terminal.supports_keyboard_enhancement?
+      #       RatatuiRuby::Terminal.push_keyboard_enhancement_flags(
+      #         :disambiguate, :report_event_types
+      #       )
+      #     end
+      #     begin
+      #       main_loop
+      #     ensure
+      #       RatatuiRuby::Terminal.pop_keyboard_enhancement_flags
+      #     end
+      #   end
+      #--
+      # SPDX-SnippetEnd
+      #++
+      # Raises ArgumentError for unknown flags, for an empty flag list, or
+      # for <tt>:report_associated_text</tt> (the bundled crossterm does
+      # not implement it yet). Raises <tt>RatatuiRuby::Error::Terminal</tt>
+      # when no terminal is active.
+      #
+      # [*flags] Symbols naming the protocol flags to push.
+      def push_keyboard_enhancement_flags(*flags)
+        _push_keyboard_enhancement_flags(flags.map(&:to_s))
+      end
+
+      # Pops the Kitty keyboard protocol enhancement flags.
+      #
+      # The terminal stacks pushes; each pop restores the keyboard state
+      # from before the matching push. Call it once per push, in the ensure
+      # block that pairs with it, so the terminal ends up where it started.
+      #
+      # === Example
+      #
+      #--
+      # SPDX-SnippetBegin
+      # SPDX-FileCopyrightText: 2026 Kerrick Long
+      # SPDX-License-Identifier: MIT-0
+      #++
+      #   RatatuiRuby::Terminal.pop_keyboard_enhancement_flags
+      #--
+      # SPDX-SnippetEnd
+      #++
+      # Raises <tt>RatatuiRuby::Error::Terminal</tt> when no terminal is
+      # active.
+      def pop_keyboard_enhancement_flags
+        _pop_keyboard_enhancement_flags
+      end
+
       # Globally override NO_COLOR detection.
       #
       # The NO_COLOR environment variable tells applications to disable color.

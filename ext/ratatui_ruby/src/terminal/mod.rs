@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Kerrick Long <me@kerricklong.com>
+// SPDX-FileCopyrightText: 2026 Kerrick Long <me@kerricklong.com>
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 //! Terminal management module.
@@ -34,7 +34,10 @@ pub use queries::{
 };
 
 // Mutation functions
-pub use mutations::{insert_before, resize_terminal, set_cursor_position};
+pub use mutations::{
+    insert_before, pop_keyboard_enhancement_flags, push_keyboard_enhancement_flags,
+    resize_terminal, set_cursor_position,
+};
 
 // Capability detection
 pub use capabilities::{

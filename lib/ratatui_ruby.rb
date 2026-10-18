@@ -392,7 +392,8 @@ module RatatuiRuby
       Event::Key.new(
         code: raw[:code],
         modifiers: (raw[:modifiers] || []).freeze,
-        kind: raw[:kind] || :standard
+        kind: raw[:kind] || :standard,
+        event_kind: raw[:event_kind] || :press
       ).freeze
     when :mouse
       Event::Mouse.new(

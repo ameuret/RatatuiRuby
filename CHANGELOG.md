@@ -12,8 +12,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **Key event kinds**: `RatatuiRuby::Event::Key` now carries an `event_kind` of `:press`, `:repeat`, or `:release`, and `poll_event` no longer discards repeat and release events. Applications can now tell a held key (terminal auto-repeat) from a fresh press, and can act on key release, on terminals that report them. The `press?`, `repeat?`, and `release?` predicates answer directly, and pattern matching sees the kind via `deconstruct_keys`.
+
+- **Keyboard enhancement flags**: `RatatuiRuby::Terminal.push_keyboard_enhancement_flags` and `pop_keyboard_enhancement_flags` push and pop Kitty keyboard protocol flags (`:disambiguate`, `:report_event_types`, `:report_alternate_keys`, `:report_all_keys_as_escape_codes`) so capable terminals actually report repeat and release events. Pushing is opt-in; pair each push with a pop in an ensure block.
 
 ### Changed
+
+- **Windows key events**: crossterm reports both a press and a release event for each keystroke on Windows. The library previously discarded release events, silently protecting applications from double-processing. Applications that handle every key event must now check `event.event_kind` (or `event.press?`) where they previously relied on this filtering.
+
 
 ### Fixed
 
